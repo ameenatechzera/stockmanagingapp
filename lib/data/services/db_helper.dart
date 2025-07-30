@@ -17,66 +17,71 @@ class StockDatabase {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(
-      path,
-      version: 2,
-      onCreate: _createDB,
-      onUpgrade: _upgradeDB,
-    );
+    return await openDatabase(path, version: 2, onCreate: _createDB);
   }
 
   Future _createDB(Database db, int version) async {
     await db.execute('''
       CREATE TABLE stock(
-        barcode TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        unit TEXT NOT NULL,
-        product_code_nm TEXT,
-        conversion_rate_nm REAL,
-        cost_nm REAL
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+  barcode TEXT,
+      itemcode TEXT NOT NULL,
+      uomid TEXT NOT NULL,
+      conversion TEXT,
+      itemdescription TEXT
       )
     ''');
+    // Stock inventory table (with quantity)
+    await db.execute('''
+    CREATE TABLE stock_inventory(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      barcode TEXT UNIQUE,
+      itemcode TEXT NOT NULL,
+      uomid TEXT NOT NULL,
+      conversion TEXT,
+      itemdescription TEXT,
+      quantity TEXT NOT NULL
+    )
+  ''');
     await db.execute('''
     CREATE TABLE selected_stock(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       barcode TEXT UNIQUE,
-      name TEXT,
-      unit TEXT,
-      product_code_nm TEXT,
-      conversion_rate_nm REAL,
-      cost_nm REAL,
+      itemcode TEXT,
+      uomid TEXT,
+      conversion REAL,
+      itemdescription TEXT,
       quantity TEXT
     )
   ''');
   }
 
-  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('''
-      CREATE TABLE selected_stock(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        barcode TEXT,
-        name TEXT,
-        unit TEXT,
-        product_code_nm TEXT,
-        conversion_rate_nm REAL,
-        cost_nm REAL,
-        quantity TEXT
-      )
-    ''');
-    }
-  }
+  // Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+  //   if (oldVersion < 2) {
+  //     await db.execute('''
+  //     CREATE TABLE selected_stock(
+  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
+  //       barcode TEXT,
+  //       name TEXT,
+  //       unit TEXT,
+  //       product_code_nm TEXT,
+  //       conversion_rate_nm REAL,
+  //       cost_nm REAL,
+  //       quantity TEXT
+  //     )
+  //   ''');
+  //   }
+  // }
 
   // ✅ INSERT FUNCTION
   Future<void> insertSelectedStock(SavedProduct product) async {
     final db = await instance.database;
     await db.insert('selected_stock', {
       'barcode': product.barcode,
-      'name': product.name,
-      'unit': product.unit,
-      'product_code_nm': product.productCode,
-      'conversion_rate_nm': double.tryParse(product.conversionRate) ?? 0.0,
-      'cost_nm': double.tryParse(product.cost) ?? 0.0,
+      'itemcode': product.itemcode,
+      'uomid': product.uomid,
+      'conversion': product.conversion,
+      'itemdescription': double.tryParse(product.itemdescription) ?? 0.0,
       'quantity': product.quantity,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -90,11 +95,10 @@ class StockDatabase {
         .map(
           (json) => SavedProduct(
             barcode: json['barcode'] as String,
-            name: json['name'] as String,
-            unit: json['unit'] as String,
-            productCode: json['product_code_nm']?.toString() ?? '',
-            conversionRate: json['conversion_rate_nm']?.toString() ?? '',
-            cost: json['cost_nm']?.toString() ?? '',
+            itemcode: json['itemcode'] as String,
+            uomid: json['uomid'] as String,
+            conversion: json['conversion']?.toString() ?? '',
+            itemdescription: json['itemdescription']?.toString() ?? '',
             quantity: json['quantity']?.toString() ?? '',
           ),
         )
@@ -121,11 +125,11 @@ class StockDatabase {
       // Prepare updated data
       final updatedData = {
         'barcode': product.barcode,
-        'name': product.name,
-        'unit': product.unit,
-        'product_code_nm': product.productCode,
-        'conversion_rate_nm': double.tryParse(product.conversionRate) ?? 0.0,
-        'cost_nm': double.tryParse(product.cost) ?? 0.0,
+        'itemcode': product.itemcode,
+        'uomid': product.uomid,
+        'conversion': product.conversion,
+        'itemdescription': double.tryParse(product.itemdescription) ?? 0.0,
+
         'quantity': product.quantity,
         // totalQty.toString(),
       };
@@ -145,11 +149,10 @@ class StockDatabase {
       // Insert new product
       await db.insert('selected_stock', {
         'barcode': product.barcode,
-        'name': product.name,
-        'unit': product.unit,
-        'product_code_nm': product.productCode,
-        'conversion_rate_nm': double.tryParse(product.conversionRate) ?? 0.0,
-        'cost_nm': double.tryParse(product.cost) ?? 0.0,
+        'itemcode': product.itemcode,
+        'uomid': product.uomid,
+        'conversion': product.conversion,
+        'itemdescription': product.itemdescription,
         'quantity': product.quantity,
       });
 
@@ -164,13 +167,18 @@ class StockDatabase {
     db.close();
   }
 
-  Future<void> clearStockTable() async {
+  Future<void> clearSelectedStockTable() async {
     final db = await instance.database;
     await db.delete('selected_stock'); // only clears imported stock
   }
 
-  Future<void> clearImportedStockTable() async {
+  Future<void> clearMasterStockTable() async {
     final db = await instance.database;
     await db.delete('stock');
+  }
+
+  Future<void> clearStockInventoryTable() async {
+    final db = await instance.database;
+    await db.delete('stock_inventory');
   }
 }

@@ -17,11 +17,10 @@ class ProductDetailsScreen extends StatelessWidget {
 
     final savedProduct = SavedProduct(
       barcode: stock['barcode'] ?? '',
-      name: stock['name'] ?? '',
-      unit: stock['unit'] ?? '',
-      productCode: stock['product_code_nm'] ?? '',
-      conversionRate: stock['conversion_rate_nm']?.toString() ?? '0',
-      cost: stock['cost_nm']?.toString() ?? '0',
+      itemcode: stock['itemcode'] ?? '',
+      uomid: stock['uomid'] ?? '',
+      conversion: stock['conversion'] ?? '',
+      itemdescription: stock['itemdescription']?.toString() ?? '0',
       quantity: quantity,
     );
 
@@ -31,7 +30,7 @@ class ProductDetailsScreen extends StatelessWidget {
       final savedList = await StockDatabase.instance.getAllSavedProducts();
       for (var item in savedList) {
         print(
-          "✔️ Saved: ${item.barcode}, ${item.name}, ${item.quantity}, ${item.conversionRate}, ${item.productCode}, ${item.cost}",
+          "✔️ Saved: ${item.barcode}, ${item.itemcode}, ${item.quantity}, ${item.itemdescription}, ${item.uomid}, ${item.conversion}",
         );
       }
 
@@ -103,20 +102,37 @@ class ProductDetailsScreen extends StatelessWidget {
                   },
                   defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                   children: [
-                    buildTableRow("Barcode", stock['barcode']),
-                    buildTableRow("Name", stock['name']),
-                    buildTableRow("Unit", stock['unit']),
+                    // buildTableRow("Barcode", stock['barcode']),
+                    // buildTableRow("Name", stock['name']),
+                    // buildTableRow("Unit", stock['unit']),
+                    // buildTableRow(
+                    //   "Product Code",
+                    //   stock['product_code_nm'] ?? 'N/A',
+                    // ),
+                    // buildTableRow(
+                    //   "Conversion Rate",
+                    //   stock['conversion_rate_nm']?.toString() ?? 'N/A',
+                    // ),
+                    // buildTableRow(
+                    //   "Cost",
+                    //   stock['cost_nm']?.toString() ?? 'N/A',
+                    // ),
                     buildTableRow(
-                      "Product Code",
-                      stock['product_code_nm'] ?? 'N/A',
+                      "Barcode",
+                      stock['barcode']?.toString() ?? 'N/A',
                     ),
                     buildTableRow(
-                      "Conversion Rate",
-                      stock['conversion_rate_nm']?.toString() ?? 'N/A',
+                      "ItemCode",
+                      stock['itemcode']?.toString() ?? 'N/A',
+                    ),
+                    buildTableRow("UOMID", stock['uomid']?.toString() ?? 'N/A'),
+                    buildTableRow(
+                      "Description",
+                      stock['itemdescription']?.toString() ?? 'N/A',
                     ),
                     buildTableRow(
-                      "Cost",
-                      stock['cost_nm']?.toString() ?? 'N/A',
+                      "Conversion",
+                      stock['conversion']?.toString() ?? 'N/A',
                     ),
                   ],
                 ),

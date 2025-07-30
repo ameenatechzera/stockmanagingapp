@@ -65,17 +65,17 @@ class ExportPreviewScreen extends StatelessWidget {
                           ),
                         ),
                         title: Text(
-                          product.name,
+                          product.itemcode,
                           style: TextStyle(color: kwhite),
                         ),
                         subtitle: Text(
                           "Qty: ${product.quantity}",
                           style: TextStyle(color: kwhite),
                         ),
-                        trailing: Text(
-                          "₹${product.cost}",
-                          style: TextStyle(color: kwhite),
-                        ),
+                        // trailing: Text(
+                        //   "${product.conversion}",
+                        //   style: TextStyle(color: kwhite),
+                        // ),
                       );
                     },
                   ),
