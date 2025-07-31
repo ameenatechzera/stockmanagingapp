@@ -20,12 +20,16 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
 
   final FocusNode barcodeFocus = FocusNode();
   final FocusNode quantityFocus = FocusNode();
+  Map<String, dynamic>? lastScannedProduct;
+  int totalItems = 0;
+  int totalQuantity = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       barcodeFocus.requestFocus();
+      updateSummary();
     });
   }
 
@@ -127,7 +131,32 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
                       'Barcode',
                       barcodeController,
                       focusNode: barcodeFocus,
-                      onSubmitted: (value) {
+                      onSubmitted: (value) async {
+                        final product = await fetchProductByBarcode(
+                          value.trim(),
+                        );
+
+                        if (product != null) {
+                          itemCodeController.text = product['itemcode'] ?? '';
+                          uomIdController.text = product['uomid'] ?? '';
+                          descriptionController.text =
+                              product['itemdescription'] ?? '';
+                          conversionController.text =
+                              product['conversion']?.toString() ?? '';
+                          setState(() {
+                            lastScannedProduct = product;
+                          });
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("❌ Product not found"),
+                            ),
+                          );
+                          itemCodeController.clear();
+                          uomIdController.clear();
+                          descriptionController.clear();
+                          conversionController.clear();
+                        }
                         FocusScope.of(context).requestFocus(quantityFocus);
                       },
                       suffix: Container(
@@ -401,6 +430,9 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
                                   ),
                                   IconButton(
                                     onPressed: () {
+                                      setState(() {
+                                        lastScannedProduct = null;
+                                      });
                                       // TODO: Clear scanned product fields or state
                                     },
                                     icon: const Icon(
@@ -414,30 +446,61 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            const Text(
-                              'Barcode:  12345678',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            const Text(
-                              'ItemCode: ITM001',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            const Text(
-                              'UOMID:   PCS',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            const Text(
-                              'Description: Sample Item',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            const Text(
-                              'Conversion: 1.0',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            const Text(
-                              'Quantity: 2.0',
-                              style: TextStyle(color: Colors.white),
-                            ),
+                            if (lastScannedProduct != null) ...[
+                              Text(
+                                'Barcode: ${lastScannedProduct!['barcode'] ?? ''}',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                'ItemCode: ${lastScannedProduct!['itemcode'] ?? ''}',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                'UOMID: ${lastScannedProduct!['uomid'] ?? ''}',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                'Description: ${lastScannedProduct!['itemdescription'] ?? ''}',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                'Conversion: ${lastScannedProduct!['conversion'] ?? ''}',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                'Quantity: ${quantityController.text}',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ] else
+                              const Text(
+                                'No product scanned yet',
+                                style: TextStyle(color: Colors.white70),
+                              ),
+
+                            // const Text(
+                            //   'Barcode:  12345678',
+                            //   style: TextStyle(color: Colors.white),
+                            // ),
+                            // const Text(
+                            //   'ItemCode: ITM001',
+                            //   style: TextStyle(color: Colors.white),
+                            // ),
+                            // const Text(
+                            //   'UOMID:   PCS',
+                            //   style: TextStyle(color: Colors.white),
+                            // ),
+                            // const Text(
+                            //   'Description: Sample Item',
+                            //   style: TextStyle(color: Colors.white),
+                            // ),
+                            // const Text(
+                            //   'Conversion: 1.0',
+                            //   style: TextStyle(color: Colors.white),
+                            // ),
+                            // const Text(
+                            //   'Quantity: 2.0',
+                            //   style: TextStyle(color: Colors.white),
+                            // ),
                           ],
                         ),
                       ),
@@ -481,18 +544,33 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
                                 // Info column
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
+                                  children: [
+                                    // Text(
+                                    //   'Total Items: 5',
+                                    //   style: TextStyle(
+                                    //     color: Colors.white70,
+                                    //     fontSize: 16,
+                                    //   ),
+                                    // ),
+                                    // SizedBox(height: 6),
+                                    // Text(
+                                    //   'Total Quantity: 23',
+                                    //   style: TextStyle(
+                                    //     color: Colors.white70,
+                                    //     fontSize: 16,
+                                    //   ),
+                                    // ),
                                     Text(
-                                      'Total Items: 5',
-                                      style: TextStyle(
+                                      'Total Items: $totalItems',
+                                      style: const TextStyle(
                                         color: Colors.white70,
                                         fontSize: 16,
                                       ),
                                     ),
-                                    SizedBox(height: 6),
+                                    const SizedBox(height: 6),
                                     Text(
-                                      'Total Quantity: 23',
-                                      style: TextStyle(
+                                      'Total Quantity: $totalQuantity',
+                                      style: const TextStyle(
                                         color: Colors.white70,
                                         fontSize: 16,
                                       ),
@@ -546,7 +624,7 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
                           try {
                             await StockDatabase.instance
                                 .insertOrUpdateSelectedStock(product);
-
+                            await updateSummary();
                             // Optional: clear fields after save
                             barcodeController.clear();
                             itemCodeController.clear();
@@ -588,5 +666,45 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
         ),
       ),
     );
+  }
+
+  Future<Map<String, dynamic>?> fetchProductByBarcode(String barcode) async {
+    final db = await StockDatabase.instance.database;
+
+    // Try stock_inventory first
+    var result = await db.query(
+      'stock_inventory',
+      where: 'barcode = ?',
+      whereArgs: [barcode],
+    );
+
+    if (result.isNotEmpty) return result.first;
+
+    // Then try stock
+    result = await db.query(
+      'stock',
+      where: 'barcode = ?',
+      whereArgs: [barcode],
+    );
+
+    if (result.isNotEmpty) return result.first;
+
+    return null;
+  }
+
+  Future<void> updateSummary() async {
+    final db = await StockDatabase.instance.database;
+
+    final itemCountResult = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM selected_stock',
+    );
+    final quantitySumResult = await db.rawQuery(
+      'SELECT SUM(CAST(quantity AS INTEGER)) as total FROM selected_stock',
+    );
+
+    setState(() {
+      totalItems = itemCountResult.first['count'] as int? ?? 0;
+      totalQuantity = quantitySumResult.first['total'] as int? ?? 0;
+    });
   }
 }

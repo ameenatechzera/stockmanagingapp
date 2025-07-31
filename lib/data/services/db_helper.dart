@@ -81,7 +81,7 @@ class StockDatabase {
       'itemcode': product.itemcode,
       'uomid': product.uomid,
       'conversion': product.conversion,
-      'itemdescription': double.tryParse(product.itemdescription) ?? 0.0,
+      'itemdescription': product.itemdescription,
       'quantity': product.quantity,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -128,7 +128,7 @@ class StockDatabase {
         'itemcode': product.itemcode,
         'uomid': product.uomid,
         'conversion': product.conversion,
-        'itemdescription': double.tryParse(product.itemdescription) ?? 0.0,
+        'itemdescription': product.itemdescription,
 
         'quantity': product.quantity,
         // totalQty.toString(),
