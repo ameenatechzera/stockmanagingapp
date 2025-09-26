@@ -1,9 +1,7 @@
-import 'package:excel/excel.dart';
-
 class StockInventoryItem {
   final String barcode;
   final String itemCode;
-  final String uomId;
+  final String unit;
   final String conversion;
   final String itemDescription;
   final String quantity;
@@ -11,7 +9,7 @@ class StockInventoryItem {
   StockInventoryItem({
     required this.barcode,
     required this.itemCode,
-    required this.uomId,
+    required this.unit,
     required this.conversion,
     required this.itemDescription,
     required this.quantity,
@@ -26,7 +24,6 @@ class StockInventoryItem {
       final key = header[i].toLowerCase().trim();
       final value = i < row.length ? row[i]?.toString().trim() : null;
 
-      // Remove any backticks from barcode
       if (key == 'barcode' && value != null) {
         stock[key] = value.replaceAll('`', '');
       } else {
@@ -34,14 +31,13 @@ class StockInventoryItem {
       }
     }
 
-    // Validate required fields
     if ((stock['barcode'] ?? '').isEmpty) {
       throw FormatException('Empty barcode in row: $row');
     }
     if ((stock['itemcode'] ?? '').isEmpty) {
       throw FormatException('Empty itemcode in row: $row');
     }
-    if ((stock['uomid'] ?? '').isEmpty) {
+    if ((stock['unit'] ?? '').isEmpty) {
       throw FormatException('Empty uomid in row: $row');
     }
     if ((stock['quantity'] ?? '').isEmpty) {
@@ -51,19 +47,18 @@ class StockInventoryItem {
     return StockInventoryItem(
       barcode: stock['barcode'] ?? '',
       itemCode: stock['itemcode'] ?? '',
-      uomId: stock['uomid'] ?? '',
+      unit: stock['unit'] ?? '',
       conversion: stock['conversion'] ?? '1',
       itemDescription: stock['itemdescription'] ?? '',
-      quantity: stock['quantity'] ?? '0', // Default to '0' if null
+      quantity: stock['quantity'] ?? '0',
     );
   }
 
-  // Map for database insert/update (keys match DB columns)
   Map<String, dynamic> toMap() {
     return {
       'barcode': barcode,
       'itemcode': itemCode,
-      'uomid': uomId,
+      'unit': unit,
       'conversion': conversion,
       'itemdescription': itemDescription,
       'quantity': quantity,
@@ -72,7 +67,7 @@ class StockInventoryItem {
 
   @override
   String toString() {
-    return 'StockInventoryItem(barcode: $barcode, itemCode: $itemCode, uomId: $uomId, '
+    return 'StockInventoryItem(barcode: $barcode, itemCode: $itemCode, unit: $unit, '
         'conversion: $conversion, itemDescription: $itemDescription, quantity: $quantity)';
   }
 }

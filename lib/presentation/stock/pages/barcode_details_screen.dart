@@ -1,7 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stockapp/core/colors/colors.dart';
+import 'package:stockapp/core/theme/theme_provider.dart';
 import 'package:stockapp/data/models/product_detail_model.dart';
 import 'package:stockapp/data/services/db_helper.dart';
+import 'package:stockapp/presentation/stock/pages/export_preview_screen.dart';
 
 class BarcodeDetailsScreen extends StatefulWidget {
   const BarcodeDetailsScreen({super.key});
@@ -13,14 +19,17 @@ class BarcodeDetailsScreen extends StatefulWidget {
 class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
   final TextEditingController barcodeController = TextEditingController();
   final TextEditingController itemCodeController = TextEditingController();
-  final TextEditingController uomIdController = TextEditingController();
+  final TextEditingController unitController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
   final TextEditingController conversionController = TextEditingController();
   final TextEditingController quantityController = TextEditingController();
 
   final FocusNode barcodeFocus = FocusNode();
   final FocusNode quantityFocus = FocusNode();
+  Timer? _debounce;
+
   Map<String, dynamic>? lastScannedProduct;
+  List<Map<String, dynamic>> scannedProductsHistory = [];
   int totalItems = 0;
   int totalQuantity = 0;
 
@@ -37,31 +46,56 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
   void dispose() {
     barcodeController.dispose();
     itemCodeController.dispose();
-    uomIdController.dispose();
+    unitController.dispose();
     descriptionController.dispose();
     conversionController.dispose();
     quantityController.dispose();
     barcodeFocus.dispose();
     quantityFocus.dispose();
     super.dispose();
+    _debounce?.cancel();
   }
 
   InputDecoration inputDecoration(String label, [Widget? suffix]) {
+    final isDarkMode =
+        Provider.of<ThemeProvider>(context, listen: false).themeMode ==
+        ThemeMode.dark;
     return InputDecoration(
-      enabledBorder: const OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.white),
+      isDense: true,
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(
+          color: isDarkMode ? Colors.white : Colors.black,
+          width: 1,
+        ),
       ),
-      focusedBorder: const OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.white, width: 2),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(
+          color: isDarkMode ? Colors.white : Colors.black,
+          width: 1,
+        ),
       ),
       errorBorder: const OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.red),
+        borderSide: BorderSide(color: Colors.red, width: 1),
       ),
-      disabledBorder: const OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.white54),
+      disabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(
+          color: isDarkMode ? Colors.white54 : Colors.black54,
+          width: 1,
+        ),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       suffixIcon: suffix,
+      suffixIconConstraints: const BoxConstraints(
+        minHeight: 35,
+        minWidth: 35,
+        maxHeight: 35,
+        maxWidth: 35,
+      ),
+      labelText: label,
+      labelStyle: TextStyle(
+        fontSize: 12,
+        color: isDarkMode ? Colors.white70 : Colors.black54,
+      ),
     );
   }
 
@@ -71,24 +105,46 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
     Widget? suffix,
     FocusNode? focusNode,
     Function(String)? onSubmitted,
+    bool isLastField = false,
   }) {
+    final isDarkMode =
+        Provider.of<ThemeProvider>(context, listen: false).themeMode ==
+        ThemeMode.dark;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Row(
         children: [
           SizedBox(
-            width: 100,
-            child: Text(label, style: TextStyle(color: kwhite, fontSize: 18)),
+            width: 55,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isDarkMode ? kwhite : Colors.black,
+                fontSize: 10,
+              ),
+            ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 4),
           Expanded(
             child: TextFormField(
-              style: const TextStyle(color: Colors.white),
-              cursorColor: kwhite,
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : Colors.black,
+                fontSize: 12,
+              ),
+              cursorColor: isDarkMode ? kwhite : Colors.black,
               controller: controller,
               focusNode: focusNode,
-              onFieldSubmitted: onSubmitted,
-              decoration: inputDecoration(label, suffix),
+              onFieldSubmitted: (value) {
+                if (onSubmitted != null) {
+                  onSubmitted(value);
+                }
+                if (isLastField) {
+                  _saveProduct();
+                }
+              },
+              textInputAction:
+                  isLastField ? TextInputAction.done : TextInputAction.next,
+              decoration: inputDecoration('', suffix),
             ),
           ),
         ],
@@ -98,569 +154,586 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.themeMode == ThemeMode.dark;
+
     return Scaffold(
+      backgroundColor: isDarkMode ? Color.fromARGB(255, 22, 8, 20) : kwhite,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
+        toolbarHeight: 36,
         foregroundColor: kwhite,
-        title: const Text('Barcode Details', style: TextStyle(color: kwhite)),
-        backgroundColor: const Color(0xFF1C1243),
+        title: Text(
+          'Stock Taking',
+          style: TextStyle(
+            color: kwhite,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: isDarkMode ? Color(0xFF1C1243) : Color(0xFF1C1243),
+        actions: [
+          IconButton(
+            icon: Icon(
+              isDarkMode ? Icons.light_mode : Icons.dark_mode,
+              size: 16,
+            ),
+            onPressed: () {
+              themeProvider.toggleTheme(!isDarkMode);
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF1C1243), Color.fromARGB(255, 22, 8, 20)],
-            ),
+          decoration: BoxDecoration(
+            gradient:
+                isDarkMode
+                    ? LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF1C1243),
+                        Color.fromARGB(255, 22, 8, 20),
+                      ],
+                    )
+                    : const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xFFF5F7FA), Color(0xFFF5F7FA)],
+                    ),
           ),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 8.0),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight:
-                    MediaQuery.of(context).size.height -
-                    kToolbarHeight -
-                    MediaQuery.of(context).padding.top,
-              ),
-              child: IntrinsicHeight(
-                child: Column(
-                  children: [
-                    buildField(
-                      'Barcode',
-                      barcodeController,
-                      focusNode: barcodeFocus,
-                      onSubmitted: (value) async {
-                        final product = await fetchProductByBarcode(
-                          value.trim(),
-                        );
-
-                        if (product != null) {
-                          itemCodeController.text = product['itemcode'] ?? '';
-                          uomIdController.text = product['uomid'] ?? '';
-                          descriptionController.text =
-                              product['itemdescription'] ?? '';
-                          conversionController.text =
-                              product['conversion']?.toString() ?? '';
-                          setState(() {
-                            lastScannedProduct = product;
-                          });
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("❌ Product not found"),
-                            ),
-                          );
-                          itemCodeController.clear();
-                          uomIdController.clear();
-                          descriptionController.clear();
-                          conversionController.clear();
-                        }
+            child: Column(
+              children: [
+                SizedBox(height: 10),
+                buildField(
+                  'Barcode',
+                  barcodeController,
+                  focusNode: barcodeFocus,
+                  onSubmitted: (value) async {
+                    final barcode = value.trim();
+                    final product = await fetchProductByBarcode(barcode);
+                    if (product != null) {
+                      itemCodeController.text = product['itemcode'] ?? '';
+                      unitController.text = product['unit'] ?? '';
+                      descriptionController.text =
+                          product['itemdescription'] ?? '';
+                      conversionController.text =
+                          product['conversion']?.toString() ?? '';
+                    } else {
+                      final add = await _showAddProductDialog(context, barcode);
+                      if (add == true) {
                         FocusScope.of(context).requestFocus(quantityFocus);
+                      } else {
+                        // Cancel → just refocus barcode
+                        barcodeController.clear();
+                        FocusScope.of(context).requestFocus(barcodeFocus);
+                      }
+                      return;
+                    }
+                    FocusScope.of(context).requestFocus(quantityFocus);
+                  },
+
+                  suffix: Container(
+                    margin: const EdgeInsets.only(right: 12),
+                    height: 20,
+                    width: 20,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 12,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        barcodeController.clear();
+                        itemCodeController.clear();
+                        unitController.clear();
+                        descriptionController.clear();
+                        conversionController.clear();
+                        quantityController.clear();
+                        FocusScope.of(context).requestFocus(barcodeFocus);
                       },
-                      suffix: Container(
-                        margin: const EdgeInsets.only(right: 18),
-                        height: 28,
-                        width: 28,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () {
-                            barcodeController.clear();
-                            itemCodeController.clear();
-                            uomIdController.clear();
-                            descriptionController.clear();
-                            conversionController.clear();
-                            quantityController.clear();
-
-                            FocusScope.of(context).requestFocus(barcodeFocus);
-                          },
-                        ),
-                      ),
                     ),
-                    buildField('ItemCode', itemCodeController),
-                    buildField('UOMID', uomIdController),
-                    buildField('Description', descriptionController),
-                    buildField('Conversion', conversionController),
-
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 24),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white, width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Quantity',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                // Decrement Button
-                                GestureDetector(
-                                  onTap: () {
-                                    final current =
-                                        int.tryParse(quantityController.text) ??
-                                        0;
-                                    if (current > 0) {
-                                      quantityController.text =
-                                          (current - 1).toString();
-                                    }
-                                  },
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white),
-                                      color: Colors.white.withOpacity(0.2),
-                                    ),
-                                    padding: const EdgeInsets.all(8),
-                                    child: const Icon(
-                                      Icons.remove,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-
-                                // Quantity Input
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: quantityController,
-                                    focusNode: quantityFocus,
-                                    keyboardType: TextInputType.number,
-                                    textInputAction: TextInputAction.done,
-                                    onFieldSubmitted:
-                                        (_) => FocusScope.of(context).unfocus(),
-                                    textAlign: TextAlign.center,
-                                    cursorColor: Colors.white,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            vertical: 10,
-                                            horizontal: 12,
-                                          ),
-                                      hintText: '0',
-                                      hintStyle: const TextStyle(
-                                        color: Colors.white54,
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white.withOpacity(0.05),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white,
-                                          width: 2,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                const SizedBox(width: 16),
-
-                                // Increment Button
-                                GestureDetector(
-                                  onTap: () {
-                                    final current =
-                                        int.tryParse(quantityController.text) ??
-                                        0;
-                                    quantityController.text =
-                                        (current + 1).toString();
-                                  },
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white),
-                                      color: Colors.white.withOpacity(0.2),
-                                    ),
-                                    padding: const EdgeInsets.all(8),
-                                    child: const Icon(
-                                      Icons.add,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Padding(
-                    //   padding: const EdgeInsets.only(bottom: 24),
-                    //   child: Container(
-                    //     padding: const EdgeInsets.symmetric(
-                    //       horizontal: 12,
-                    //       vertical: 10,
-                    //     ),
-                    //     decoration: BoxDecoration(
-                    //       color: Colors.white.withOpacity(0.1),
-                    //       borderRadius: BorderRadius.circular(8),
-                    //       border: Border.all(color: Colors.white),
-                    //     ),
-                    //     child: Row(
-                    //       children: [
-                    //         const Text(
-                    //           'Quantity:',
-                    //           style: TextStyle(
-                    //             color: Colors.white,
-                    //             fontSize: 18,
-                    //           ),
-                    //         ),
-                    //         const SizedBox(width: 16),
-                    //         Expanded(
-                    //           child: TextFormField(
-                    //             controller: quantityController,
-                    //             focusNode: quantityFocus,
-                    //             keyboardType: TextInputType.number,
-                    //             textInputAction: TextInputAction.done,
-                    //             onFieldSubmitted:
-                    //                 (_) => FocusScope.of(context).unfocus(),
-                    //             cursorColor: Colors.white,
-                    //             style: const TextStyle(color: Colors.white),
-                    //             decoration: const InputDecoration(
-                    //               isDense: true,
-                    //               contentPadding: EdgeInsets.symmetric(
-                    //                 horizontal: 12,
-                    //                 vertical: 10,
-                    //               ),
-                    //               enabledBorder: OutlineInputBorder(
-                    //                 borderSide: BorderSide(color: Colors.white),
-                    //               ),
-                    //               focusedBorder: OutlineInputBorder(
-                    //                 borderSide: BorderSide(
-                    //                   color: Colors.white,
-                    //                   width: 2,
-                    //                 ),
-                    //               ),
-                    //               hintText: 'Enter quantity',
-                    //               hintStyle: TextStyle(color: Colors.white70),
-                    //             ),
-                    //           ),
-                    //         ),
-                    //       ],
-                    //     ),
-                    //   ),
-                    // ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white54),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // const Text(
-                            //   'Last Scanned Product:',
-                            //   style: TextStyle(
-                            //     color: Colors.white,
-                            //     fontWeight: FontWeight.bold,
-                            //   ),
-                            // ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Last Scanned Product:',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        lastScannedProduct = null;
-                                      });
-                                      // TODO: Clear scanned product fields or state
-                                    },
-                                    icon: const Icon(
-                                      Icons.delete,
-                                      color: Colors.white,
-                                    ),
-                                    tooltip: 'Clear',
-                                    splashRadius: 20,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (lastScannedProduct != null) ...[
-                              Text(
-                                'Barcode: ${lastScannedProduct!['barcode'] ?? ''}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                'ItemCode: ${lastScannedProduct!['itemcode'] ?? ''}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                'UOMID: ${lastScannedProduct!['uomid'] ?? ''}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                'Description: ${lastScannedProduct!['itemdescription'] ?? ''}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                'Conversion: ${lastScannedProduct!['conversion'] ?? ''}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                'Quantity: ${quantityController.text}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ] else
-                              const Text(
-                                'No product scanned yet',
-                                style: TextStyle(color: Colors.white70),
-                              ),
-
-                            // const Text(
-                            //   'Barcode:  12345678',
-                            //   style: TextStyle(color: Colors.white),
-                            // ),
-                            // const Text(
-                            //   'ItemCode: ITM001',
-                            //   style: TextStyle(color: Colors.white),
-                            // ),
-                            // const Text(
-                            //   'UOMID:   PCS',
-                            //   style: TextStyle(color: Colors.white),
-                            // ),
-                            // const Text(
-                            //   'Description: Sample Item',
-                            //   style: TextStyle(color: Colors.white),
-                            // ),
-                            // const Text(
-                            //   'Conversion: 1.0',
-                            //   style: TextStyle(color: Colors.white),
-                            // ),
-                            // const Text(
-                            //   'Quantity: 2.0',
-                            //   style: TextStyle(color: Colors.white),
-                            // ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white54),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 145,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Text(
-                                'Summary',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            // Row with info and Preview button
-                            Row(
-                              children: [
-                                // Info column
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Text(
-                                    //   'Total Items: 5',
-                                    //   style: TextStyle(
-                                    //     color: Colors.white70,
-                                    //     fontSize: 16,
-                                    //   ),
-                                    // ),
-                                    // SizedBox(height: 6),
-                                    // Text(
-                                    //   'Total Quantity: 23',
-                                    //   style: TextStyle(
-                                    //     color: Colors.white70,
-                                    //     fontSize: 16,
-                                    //   ),
-                                    // ),
-                                    Text(
-                                      'Total Items: $totalItems',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Total Quantity: $totalQuantity',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Spacer(),
-
-                                // Preview Button
-                                TextButton(
-                                  onPressed: () {
-                                    // TODO: Add your preview logic here
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.white,
-                                    backgroundColor: Colors.white.withOpacity(
-                                      0.05,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: const BorderSide(
-                                        color: Colors.white38,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Text('Preview'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const Spacer(),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          final product = SavedProduct(
-                            barcode: barcodeController.text.trim(),
-                            itemcode: itemCodeController.text.trim(),
-                            uomid: uomIdController.text.trim(),
-                            conversion: conversionController.text.trim(),
-                            itemdescription:
-                                descriptionController.text
-                                    .trim(), // ⚠️ keep as String!
-                            quantity: quantityController.text.trim(),
-                          );
-
-                          try {
-                            await StockDatabase.instance
-                                .insertOrUpdateSelectedStock(product);
-                            await updateSummary();
-                            // Optional: clear fields after save
-                            barcodeController.clear();
-                            itemCodeController.clear();
-                            uomIdController.clear();
-                            conversionController.clear();
-                            descriptionController.clear();
-                            quantityController.clear();
-
-                            FocusScope.of(context).requestFocus(barcodeFocus);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  '✅ Product saved to selected_stock',
-                                ),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '❌ Error saving product: ${e.toString()}',
-                                ),
-                              ),
-                            );
-                          }
-                        },
-
-                        // print('Saving...');
-                        child: const Text('Save'),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                buildField('ItemCode', itemCodeController),
+                buildField('Description', descriptionController),
+                buildField('Unit', unitController),
+
+                buildField('Conversion', conversionController),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2.0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 3,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          isDarkMode
+                              ? Colors.white.withOpacity(0.1)
+                              : Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDarkMode ? Colors.white : Colors.black,
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      //crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Quantity',
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.white : Colors.black,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () {
+                            final current =
+                                int.tryParse(quantityController.text) ?? 0;
+                            if (current > 0) {
+                              quantityController.text =
+                                  (current - 1).toString();
+                            }
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDarkMode ? Colors.white : Colors.black,
+                              ),
+                              color:
+                                  isDarkMode
+                                      ? Colors.white.withOpacity(0.2)
+                                      : Colors.black.withOpacity(0.1),
+                            ),
+                            padding: const EdgeInsets.all(6),
+                            child: Icon(
+                              Icons.remove,
+                              color: isDarkMode ? Colors.white : Colors.black,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: quantityController,
+                            focusNode: quantityFocus,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) => _saveProduct(),
+                            textAlign: TextAlign.center,
+                            cursorColor:
+                                isDarkMode ? Colors.white : Colors.black,
+                            style: TextStyle(
+                              color: isDarkMode ? Colors.white : Colors.black,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 6,
+                              ),
+                              hintText: '0',
+                              hintStyle: TextStyle(
+                                color:
+                                    isDarkMode
+                                        ? Colors.white54
+                                        : Colors.black54,
+                              ),
+                              filled: true,
+                              fillColor:
+                                  isDarkMode
+                                      ? Colors.white.withOpacity(0.05)
+                                      : Colors.black.withOpacity(0.03),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide: BorderSide(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide: BorderSide(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+
+                            onChanged: _onQuantityChanged,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            final current =
+                                int.tryParse(quantityController.text) ?? 0;
+                            quantityController.text = (current + 1).toString();
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDarkMode ? Colors.white : Colors.black,
+                              ),
+                              color:
+                                  isDarkMode
+                                      ? Colors.white.withOpacity(0.2)
+                                      : Colors.black.withOpacity(0.1),
+                            ),
+                            padding: const EdgeInsets.all(6),
+
+                            child: Icon(
+                              Icons.add,
+                              color: isDarkMode ? Colors.white : Colors.black,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color:
+                          isDarkMode
+                              ? Colors.white.withOpacity(0.1)
+                              : Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDarkMode ? Colors.white54 : Colors.black54,
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                isDarkMode
+                                    ? Colors.white.withOpacity(0.2)
+                                    : Colors.black.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Last Scanned Product',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () async {
+                                  if (scannedProductsHistory.isNotEmpty) {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder:
+                                          (_) => AlertDialog(
+                                            contentPadding:
+                                                const EdgeInsets.all(12),
+                                            titlePadding: const EdgeInsets.only(
+                                              top: 12,
+                                              left: 12,
+                                              right: 12,
+                                            ),
+                                            actionsPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            title: const Text(
+                                              'Confirm Deletion',
+                                            ),
+                                            content: const Text(
+                                              'Are you sure you want to remove the last scanned product?',
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      false,
+                                                    ),
+                                                child: const Text('Cancel'),
+                                              ),
+                                              TextButton(
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      true,
+                                                    ),
+                                                child: const Text('Delete'),
+                                              ),
+                                            ],
+                                          ),
+                                    );
+                                    if (confirm == true) {
+                                      final db =
+                                          await StockDatabase.instance.database;
+                                      await db.delete(
+                                        'selected_stock',
+                                        where: 'id = ?',
+                                        whereArgs: [
+                                          scannedProductsHistory.first['id'],
+                                        ],
+                                      );
+                                      await updateSummary();
+                                    }
+                                  }
+                                },
+                                customBorder: const CircleBorder(),
+                                splashColor: (isDarkMode
+                                        ? Colors.white
+                                        : Colors.red)
+                                    .withOpacity(0.3),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(
+                                    Icons.delete,
+                                    size: 20,
+                                    color:
+                                        isDarkMode ? Colors.white : Colors.red,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        if (scannedProductsHistory.isNotEmpty) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Barcode: ${scannedProductsHistory.first['barcode'] ?? ''}',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              Text(
+                                'ItemCode: ${scannedProductsHistory.first['itemcode'] ?? ''}',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+
+                          Text(
+                            'Description: ${scannedProductsHistory.first['itemdescription'] ?? ''}',
+                            style: TextStyle(
+                              color: isDarkMode ? Colors.white : Colors.black,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Unit: ${scannedProductsHistory.first['unit'] ?? ''}',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                'Conversion: ${scannedProductsHistory.first['conversion'] ?? ''}',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                'Quantity: ${scannedProductsHistory.first['quantity'] ?? ''}',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode ? Colors.white : Colors.black,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else
+                          Text(
+                            'No product scanned yet',
+                            style: TextStyle(
+                              color:
+                                  isDarkMode ? Colors.white70 : Colors.black54,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color:
+                        isDarkMode
+                            ? Colors.white.withOpacity(0.1)
+                            : Colors.black.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isDarkMode ? Colors.white54 : Colors.black54,
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              isDarkMode
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.black.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: SizedBox(
+                          width: 400,
+                          child: Text(
+                            'Summary',
+                            style: TextStyle(
+                              color: isDarkMode ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Total Items: $totalItems',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode
+                                          ? Colors.white70
+                                          : Colors.black,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              // const SizedBox(height: 4),
+                              Text(
+                                'Total Quantity: $totalQuantity',
+                                style: TextStyle(
+                                  color:
+                                      isDarkMode
+                                          ? Colors.white70
+                                          : Colors.black,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) {
+                                    return ExportPreviewScreen();
+                                  },
+                                ),
+                              );
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor:
+                                  isDarkMode ? Colors.white : Colors.black,
+                              backgroundColor:
+                                  isDarkMode
+                                      ? Colors.white.withOpacity(0.05)
+                                      : Colors.black.withOpacity(0.03),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                side: BorderSide(
+                                  color:
+                                      isDarkMode
+                                          ? Colors.white38
+                                          : Colors.black38,
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              minimumSize: Size.zero,
+                            ),
+                            child: const Text(
+                              'Preview',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -670,41 +743,195 @@ class _BarcodeDetailsScreenState extends State<BarcodeDetailsScreen> {
 
   Future<Map<String, dynamic>?> fetchProductByBarcode(String barcode) async {
     final db = await StockDatabase.instance.database;
-
-    // Try stock_inventory first
     var result = await db.query(
       'stock_inventory',
-      where: 'barcode = ?',
-      whereArgs: [barcode],
+      where: 'LOWER(barcode) = ?',
+      whereArgs: [barcode.toLowerCase()],
     );
-
     if (result.isNotEmpty) return result.first;
-
-    // Then try stock
     result = await db.query(
       'stock',
-      where: 'barcode = ?',
-      whereArgs: [barcode],
+      where: 'LOWER(barcode) = ?',
+      whereArgs: [barcode.toLowerCase()],
     );
-
-    if (result.isNotEmpty) return result.first;
-
-    return null;
+    return result.isNotEmpty ? result.first : null;
   }
 
   Future<void> updateSummary() async {
     final db = await StockDatabase.instance.database;
-
+    final products = await db.query('selected_stock', orderBy: 'id DESC');
     final itemCountResult = await db.rawQuery(
       'SELECT COUNT(*) as count FROM selected_stock',
     );
     final quantitySumResult = await db.rawQuery(
       'SELECT SUM(CAST(quantity AS INTEGER)) as total FROM selected_stock',
     );
-
     setState(() {
+      scannedProductsHistory = products;
       totalItems = itemCountResult.first['count'] as int? ?? 0;
       totalQuantity = quantitySumResult.first['total'] as int? ?? 0;
     });
+  }
+
+  Future<void> _saveProduct() async {
+    final barcode = barcodeController.text.trim();
+    final qtyText = quantityController.text.trim();
+    final deviceNumber = await getDeviceNumber();
+    if (deviceNumber == null || deviceNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Device number not set. Please set it in settings.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (barcode.isEmpty || qtyText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '❌ Please scan a product or enter a barcode a quantity.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Send focus back to whichever is empty
+      if (barcode.isEmpty) {
+        FocusScope.of(context).requestFocus(barcodeFocus);
+      } else {
+        FocusScope.of(context).requestFocus(quantityFocus);
+      }
+      return;
+    }
+
+    final product = SavedProduct(
+      barcode: barcodeController.text.trim(),
+      itemcode: itemCodeController.text.trim(),
+      unit: unitController.text.trim(),
+      conversion: conversionController.text.trim(),
+      itemdescription: descriptionController.text.trim(),
+      quantity: quantityController.text.trim(),
+      deviceNumber: deviceNumber,
+    );
+    print('😂😂😂$deviceNumber');
+    try {
+      await StockDatabase.instance.insertOrUpdateSelectedStock(product);
+      await updateSummary();
+      barcodeController.clear();
+      itemCodeController.clear();
+      unitController.clear();
+      conversionController.clear();
+      descriptionController.clear();
+      quantityController.clear();
+      FocusScope.of(context).requestFocus(barcodeFocus);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating, // float so margin works
+          margin: const EdgeInsets.symmetric(),
+          padding: const EdgeInsets.symmetric(
+            // reduce internal padding
+            vertical: 4,
+            horizontal: 12,
+          ),
+          content: ConstrainedBox(
+            // force a shorter min height
+            constraints: const BoxConstraints(minHeight: 24),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.check_circle, size: 20, color: Colors.white),
+                SizedBox(width: 6),
+                Text('Product saved for exporting'),
+              ],
+            ),
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error saving product: ${e.toString()}')),
+      );
+    }
+  } // 1) Above your build, add a helper:
+
+  Future<bool?> _showOverflowDialog(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (_) => AlertDialog(
+            // title: const Text(
+            //   'Quantity Too Large',
+            //   style: TextStyle(fontSize: 16),
+            // ),
+            content: const Text(
+              'You’ve entered large quantity. Do you want to continue?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  quantityController.clear();
+                  FocusScope.of(context).requestFocus(quantityFocus);
+                  Navigator.pop(context, false);
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _onQuantityChanged(String value) {
+    // Cancel any pending timer
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+
+    // Start a new one
+    _debounce = Timer(const Duration(milliseconds: 800), () async {
+      // This runs 800ms after the last keystroke
+      if (value.length > 3) {
+        final shouldContinue = await _showOverflowDialog(context);
+        if (shouldContinue == true) {
+          _saveProduct();
+        }
+        // if false, dialog already cleared & refocused
+      }
+    });
+  }
+
+  Future<bool?> _showAddProductDialog(BuildContext context, String barcode) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (_) => AlertDialog(
+            // title: const Text('No Product Found'),
+            content: Text(
+              'No product was found for barcode “$barcode”.\nDo you want to add it?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<String?> getDeviceNumber() async {
+    final prefs = await SharedPreferences.getInstance();
+    final deviceNumber = prefs.getString('device_number');
+    print('DEBUG: Fetched device number from SharedPreferences: $deviceNumber');
+    return deviceNumber;
   }
 }

@@ -6,69 +6,85 @@ import 'package:stockapp/presentation/stock/pages/export_preview_screen.dart';
 
 class HomeOptionActions {
   static Future<void> handleTap(BuildContext context, String label) async {
-    if (label == 'Import Stock') {
-      // showDialog(
-      //   context: context,
-      //   builder:
-      //       (context) => AlertDialog(
-      //         title: const Text("Select Import Type"),
-      //         content: Column(
-      //           mainAxisSize: MainAxisSize.min,
-      //           children: [
-      //             ListTile(
-      //               leading: const Icon(Icons.storage),
-      //               title: const Text('Data'),
-      //               onTap: () async {
-      //                 Navigator.pop(context);
-      //                 await pickFileAndSave(context);
-      //               },
-      //             ),
-      //             ListTile(
-      //               leading: const Icon(Icons.insert_drive_file),
-      //               title: const Text('Stock'),
-      //               onTap: () async {
-      //                 Navigator.pop(context); // Close the dialog
-      //                 // await pickFileAndSave(context, importType: 'data');
-      //               },
-      //             ),
-      //           ],
-      //         ),
-      //       ),
-      // );
-      final importType = await showDialog<String>(
+    if (label == 'Import Product') {
+      await showDialog<void>(
         context: context,
+        barrierDismissible: false,
         builder:
-            (context) => AlertDialog(
-              title: const Text("Select Import Type"),
+            (dialogContext) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 40,
+                vertical: 24,
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+
+              title: Text(
+                "Please see the supported .csv format foritemmaster ",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14),
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.storage),
-                    title: const Text('Data'),
-                    onTap: () => Navigator.pop(context, 'data'),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      'assets/images/Screenshot 2025-08-06 132003.png',
+                      height: 100,
+                      fit: BoxFit.contain,
+                    ),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.insert_drive_file),
-                    title: const Text('Stock'),
-                    onTap: () => Navigator.pop(context, 'stock'),
+                  const Text(
+                    'Always check barcode column values '
+                    'doesnt contain "1.37058E+11" type values '
+                    'these entries will be skipped.',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 13,
+                      height: 1.2,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
+              actions: [
+                Center(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.grey),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 10,
+                      ),
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(dialogContext);
+                      // 3️⃣ Finally pick & save according to type
+                      // if (importType == 'data') {
+                      await pickFileAndSave(context, importType: 'data');
+                      // } else {
+                      //   await pickFileAndSave(context, importType: 'stock');
+                      // }
+                    },
+                    child: const Text(
+                      'CONTINUE',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
             ),
       );
-
-      if (importType == 'data') {
-        await pickFileAndSave(context, importType: 'data');
-      } else if (importType == 'stock') {
-        await pickFileAndSave(
-          context,
-          importType: 'stock',
-        ); // Handle stock import
-      }
     }
     // await pickFileAndSave(context);
-    else if (label == 'Scan Barcode') {
+    else if (label == 'Stock Take') {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) {
@@ -76,66 +92,11 @@ class HomeOptionActions {
           },
         ),
       );
-      // final scannedCode = await Navigator.push(
-      //   context,
-      //   MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-      // );
-      // try {
-      //   if (scannedCode != null) {
-      //     final db = await StockDatabase.instance.database;
-      //     final normalizedCode = scannedCode.toString().trim().toLowerCase();
-      //     print('🔍 Scanned barcode: "$normalizedCode"');
-      //     // final all = await db.query('stock');
-      //     // for (final row in all) {
-      //     //   print('📦 DB Row Barcode: "${row['barcode']}"');
-      //     // }
-
-      //     final result = await db.query(
-      //       'stock',
-
-      //       // where: 'barcode = ?',
-      //       // whereArgs: [scannedCode.toString()],
-      //       where: 'LOWER(TRIM(barcode)) = ?',
-      //       whereArgs: [normalizedCode],
-      //     );
-
-      //     if (result.isNotEmpty) {
-      //       final stock = result.first;
-
-      //       Navigator.push(
-      //         context,
-      //         MaterialPageRoute(
-      //           builder: (_) => ProductDetailsScreen(stock: stock),
-      //         ),
-      //       );
-      //     } else {
-      //       showDialog(
-      //         context: context,
-      //         builder:
-      //             (_) => AlertDialog(
-      //               title: const Text("Product Not Found"),
-      //               content: Text(
-      //                 "No product found with barcode: $scannedCode",
-      //               ),
-      //               actions: [
-      //                 TextButton(
-      //                   onPressed: () => Navigator.pop(context),
-      //                   child: const Text("OK"),
-      //                 ),
-      //               ],
-      //             ),
-      //       );
-      //     }
-      //   }
-      // } catch (e) {
-      //   print('Scanning error: ${e.toString()}');
-      // }
     } else if (label == 'Export Stock') {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ExportPreviewScreen()),
       );
-      //await exportStockToExcel(context);
     } else if (label == 'Clear Stock') {
       final confirm = await showDialog<bool>(
         context: context,
